@@ -1,15 +1,20 @@
 package org.infinispan.playground.embeddedhotrod;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.infinispan.Cache;
 import org.infinispan.client.hotrod.RemoteCache;
 import org.infinispan.client.hotrod.RemoteCacheManager;
 import org.infinispan.client.hotrod.configuration.ConfigurationBuilder;
+import org.infinispan.factories.GlobalComponentRegistry;
 import org.infinispan.manager.DefaultCacheManager;
+import org.infinispan.server.Extensions;
 import org.infinispan.server.hotrod.HotRodServer;
 import org.infinispan.server.hotrod.configuration.HotRodServerConfiguration;
 import org.infinispan.server.hotrod.configuration.HotRodServerConfigurationBuilder;
+import org.infinispan.tasks.TaskManager;
 
 public class SimpleEmbeddedHotRodServer {
 
@@ -17,6 +22,13 @@ public class SimpleEmbeddedHotRodServer {
         // Create a cache manager
         DefaultCacheManager defaultCacheManager = new DefaultCacheManager("infinispan.xml");
         Cache<String, String> embeddedCache = defaultCacheManager.getCache("default");
+
+        // Load remote tasks into task manager
+        GlobalComponentRegistry gcr = defaultCacheManager.getGlobalComponentRegistry();
+        Extensions extensions = new Extensions();
+        extensions.load(SimpleEmbeddedHotRodServer.class.getClassLoader());
+        TaskManager taskManager = gcr.getComponent(TaskManager.class);
+        taskManager.registerTaskEngine(extensions.getServerTaskEngine(defaultCacheManager));
 
         // Create a Hot Rod server which exposes the cache manager
         HotRodServerConfiguration build = new HotRodServerConfigurationBuilder().build();
@@ -70,6 +82,12 @@ public class SimpleEmbeddedHotRodServer {
            assert s.equals(remoteCache.get(s));
            System.out.printf("%s...", s);
         }
+
+        System.out.print("\nVerifying remote task execution");
+        Map<String, Object> params = new HashMap<>();
+        params.put("first", 40);
+        params.put("second", 2);
+        assert Integer.valueOf(42).equals(remoteCache.execute(ServerTaskExample.TASK_NAME, params));
 
         System.out.println("\nDone !");
         remoteCacheManager.stop();
